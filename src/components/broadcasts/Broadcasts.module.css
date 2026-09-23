@@ -1,0 +1,110 @@
+.liveBadge {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.pulseDot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background-color: var(--mantine-color-red-6);
+  box-shadow: 0 0 0 0 rgba(235, 60, 60, 0.7);
+  animation: pulse 1.6s infinite;
+}
+
+.pulseDotGreen {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background-color: var(--mantine-color-teal-6);
+  box-shadow: 0 0 0 0 rgba(32, 201, 151, 0.7);
+  animation: pulseGreen 1.6s infinite;
+}
+
+@keyframes pulse {
+  0% {
+    transform: scale(0.95);
+    box-shadow: 0 0 0 0 rgba(235, 60, 60, 0.7);
+  }
+  70% {
+    transform: scale(1);
+    box-shadow: 0 0 0 8px rgba(235, 60, 60, 0);
+  }
+  100% {
+    transform: scale(0.95);
+    box-shadow: 0 0 0 0 rgba(235, 60, 60, 0);
+  }
+}
+
+@keyframes pulseGreen {
+  0% {
+    transform: scale(0.95);
+    box-shadow: 0 0 0 0 rgba(32, 201, 151, 0.7);
+  }
+  70% {
+    transform: scale(1);
+    box-shadow: 0 0 0 8px rgba(32, 201, 151, 0);
+  }
+  100% {
+    transform: scale(0.95);
+    box-shadow: 0 0 0 0 rgba(32, 201, 151, 0);
+  }
+}
+
+.tourCard {
+  transition: transform 120ms ease, box-shadow 120ms ease, border-color 120ms ease;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.tourCard:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--mantine-shadow-md);
+  border-color: var(--mantine-color-blue-filled);
+}
+
+.boardListItem {
+  border-radius: var(--mantine-radius-sm);
+  padding: 0.5rem 0.75rem;
+  cursor: pointer;
+  transition: background-color 100ms ease;
+  border-left: 3px solid transparent;
+}
+
+.boardListItem:hover {
+  background-color: var(--mantine-color-default-hover);
+}
+
+.boardListItemActive {
+  background-color: var(--mantine-color-blue-light);
+  border-left: 3px solid var(--mantine-color-blue-6);
+}
+
+.clockBadge {
+  font-family: monospace;
+  font-size: 0.95rem;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  padding: 0.25rem 0.5rem;
+  border-radius: var(--mantine-radius-xs);
+  background-color: var(--mantine-color-dark-6);
+  color: var(--mantine-color-gray-0);
+}
+
+.playerBar {
+  padding: 0.4rem 0.75rem;
+  border-radius: var(--mantine-radius-sm);
+  background-color: var(--mantine-color-default);
+}
+
+.engineAnalysisBox {
+  border: 1px solid var(--mantine-color-default-border);
+  border-radius: var(--mantine-radius-md);
+  padding: 0.75rem;
+  background-color: var(--mantine-color-body);
+}
+

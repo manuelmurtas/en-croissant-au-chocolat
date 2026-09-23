@@ -598,6 +598,7 @@
     "Settings.VariationArrows": "Variation Arrows",
     "Settings.VariationArrows.Desc": "Show arrows for alternative moves in the current position",
     "SideBar.Board": "Board",
+    "SideBar.Broadcasts": "Broadcasts",
     "SideBar.Databases": "Databases",
     "SideBar.Engines": "Engines",
     "SideBar.Files": "Files",

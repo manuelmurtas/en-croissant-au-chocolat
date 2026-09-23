@@ -313,16 +313,16 @@ function tabValue<T extends object | string | boolean | number | null | undefine
     return atom(
         (get) => {
             const tab = get(currentTabAtom);
-            if (!tab) throw new Error("No tab selected");
-            const atom = family(tab.value);
+            const tabKey = tab?.value || get(activeTabAtom) || "default";
+            const atom = family(tabKey);
             return get(atom);
         },
         (get, set, newValue: T | ((currentValue: T) => T)) => {
             const tab = get(currentTabAtom);
-            if (!tab) throw new Error("No tab selected");
+            const tabKey = tab?.value || get(activeTabAtom) || "default";
+            const atom = family(tabKey);
             const nextValue =
-                typeof newValue === "function" ? newValue(get(tabValue(family))) : newValue;
-            const atom = family(tab.value);
+                typeof newValue === "function" ? newValue(get(atom)) : newValue;
             set(atom, nextValue);
         },
     );

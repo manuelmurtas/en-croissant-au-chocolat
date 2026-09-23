@@ -123,6 +123,22 @@ function EvalBar({ score, orientation }: { score: Score | null; orientation: Col
         ScoreBars = ScoreBars.reverse();
       }
     }
+  } else {
+    ScoreBars = (
+      <Box
+        style={{
+          height: "100%",
+          backgroundColor: theme.colors.dark[5],
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+        }}
+      >
+        <Text fz="10px" c="dimmed" style={{ transform: "rotate(-90deg)" }}>
+          -
+        </Text>
+      </Box>
+    );
   }
 
   return (
@@ -143,6 +159,8 @@ function EvalBar({ score, orientation }: { score: Score | null; orientation: Col
           height: "100%",
           borderRadius: "var(--mantine-radius-xs)",
           overflow: "hidden",
+          border: "1px solid var(--mantine-color-default-border)",
+          backgroundColor: theme.colors.dark[6],
         }}
       >
         {ScoreBars}
