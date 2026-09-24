@@ -75,6 +75,8 @@ export interface BroadcastGameSummary {
   blackTitle?: string;
   whiteTeam?: string;
   blackTeam?: string;
+  whiteFideId?: string;
+  blackFideId?: string;
   result: string;
   eco?: string;
   opening?: string;
@@ -150,6 +152,8 @@ export function parseBroadcastGames(rawPgnText: string): BroadcastGameSummary[] 
     const blackTitle = extractHeader(gamePgn, "BlackTitle");
     const whiteTeam = extractHeader(gamePgn, "WhiteTeam");
     const blackTeam = extractHeader(gamePgn, "BlackTeam");
+    const whiteFideId = extractHeader(gamePgn, "WhiteFideId");
+    const blackFideId = extractHeader(gamePgn, "BlackFideId");
     const result = extractHeader(gamePgn, "Result") || "*";
     const eco = extractHeader(gamePgn, "ECO");
     const opening = extractHeader(gamePgn, "Opening");
@@ -222,6 +226,8 @@ export function parseBroadcastGames(rawPgnText: string): BroadcastGameSummary[] 
       blackTitle,
       whiteTeam,
       blackTeam,
+      whiteFideId,
+      blackFideId,
       result,
       eco,
       opening,

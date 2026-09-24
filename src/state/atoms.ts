@@ -216,6 +216,16 @@ export const telemetryEnabledAtom = atomWithStorage<boolean>("telemetry-enabled"
     getOnInit: true,
 });
 
+export type BroadcastEngineMode = "off" | "eval-bar" | "full";
+export const broadcastEngineModeAtom = atomWithStorage<BroadcastEngineMode>(
+    "broadcast-engine-mode",
+    "off",
+);
+export const broadcastEvalDepthAtom = atomWithStorage<number>(
+    "broadcast-eval-depth",
+    18,
+);
+
 // Recent Files
 
 export type RecentFile = {

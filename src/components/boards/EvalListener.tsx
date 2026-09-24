@@ -40,7 +40,7 @@ function EvalListener() {
     useShallow((s) => getVariationLine(s.root, s.position)),
   );
 
-  const [pos, error] = positionFromFen(fen);
+  const [pos] = positionFromFen(fen);
   if (pos) {
     for (const uci of moves) {
       const move = parseUci(uci);
@@ -119,25 +119,35 @@ function EngineListener({
   const store = useContext(TreeStateContext)!;
   const setScore = useStore(store, (s) => s.setScore);
   const activeTab = useAtomValue(activeTabAtom);
+  const tabId = activeTab || "broadcast";
 
-  const [, setProgress] = useAtom(engineProgressFamily({ engine: engine.id, tab: activeTab! }));
-
-  const [, setEngineVariation] = useAtom(engineMovesFamily({ engine: engine.id, tab: activeTab! }));
+  const [, setProgress] = useAtom(engineProgressFamily({ engine: engine.id, tab: tabId }));
+  const [, setEngineVariation] = useAtom(engineMovesFamily({ engine: engine.id, tab: tabId }));
   const [settings] = useAtom(
     tabEngineSettingsFamily({
       engineId: engine.id,
       defaultSettings: engine.settings ?? undefined,
       defaultGo: engine.go ?? undefined,
-      tab: activeTab!,
+      tab: tabId,
     }),
   );
+
+  // Stop local engine process when this listener unmounts
+  useEffect(() => {
+    return () => {
+      if (engine.type === "local") {
+        stopEngine(engine as LocalEngine, tabId);
+      }
+    };
+  }, [engine, tabId]);
+
   useEffect(() => {
     if (!settings.enabled) return;
     const unlisten = events.bestMovesPayload.listen(({ payload }) => {
       const ev = payload.bestLines;
       if (
         payload.engine === engine.id &&
-        payload.tab === activeTab &&
+        payload.tab === tabId &&
         payload.fen === searchingFen &&
         equal(payload.moves, searchingMoves) &&
         settings.enabled &&
@@ -167,7 +177,7 @@ function EngineListener({
       unlisten.then((f) => f());
     };
   }, [
-    activeTab,
+    tabId,
     setScore,
     settings.enabled,
     isGameOver,
@@ -176,6 +186,10 @@ function EngineListener({
     engine.id,
     setEngineVariation,
     firstEngineWithLines,
+    threat,
+    fen,
+    moves,
+    finalFen,
   ]);
 
   const getBestMoves = useMemo(
@@ -197,7 +211,7 @@ function EngineListener({
       if (settings.enabled) {
         if (isGameOver) {
           if (engine.type === "local") {
-            stopEngine(engine, activeTab!);
+            stopEngine(engine as LocalEngine, tabId);
           }
         } else {
           const options =
@@ -205,7 +219,7 @@ function EngineListener({
               name: s.name,
               value: s.value?.toString() || "",
             })) ?? [];
-          getBestMoves(activeTab!, settings.go, {
+          getBestMoves(tabId, settings.go, {
             moves: searchingMoves,
             fen: searchingFen,
             extraOptions: options,
@@ -223,7 +237,7 @@ function EngineListener({
         }
       } else {
         if (engine.type === "local") {
-          stopEngine(engine, activeTab!);
+          stopEngine(engine as LocalEngine, tabId);
         }
       }
     },
@@ -235,7 +249,7 @@ function EngineListener({
       searchingFen,
       JSON.stringify(searchingMoves),
       isGameOver,
-      activeTab,
+      tabId,
       getBestMoves,
       setEngineVariation,
       engine,

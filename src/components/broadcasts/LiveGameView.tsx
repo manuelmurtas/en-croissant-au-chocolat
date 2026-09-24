@@ -3,6 +3,7 @@ import type { Color } from "@lichess-org/chessground/types";
 import { makeSquare, type NormalMove, parseUci } from "chessops";
 import {
   ActionIcon,
+  Avatar,
   Badge,
   Box,
   Button,
@@ -27,9 +28,11 @@ import {
   IconPlayerSkipForward,
   IconPlayerTrackNext,
   IconPlayerTrackPrev,
+  IconSettings,
 } from "@tabler/icons-react";
 import { useAtom, useAtomValue } from "jotai";
-import { useContext, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
+import useSWR from "swr/immutable";
 import { useStore } from "zustand";
 import { useShallow } from "zustand/react/shallow";
 import type { BestMoves, Score } from "@/bindings";
@@ -37,10 +40,14 @@ import { Chessground } from "@/chessground/Chessground";
 import EvalBar from "@/components/boards/EvalBar";
 import EvalListener from "@/components/boards/EvalListener";
 import { TreeStateContext, TreeStateProvider } from "@/components/common/TreeStateContext";
+import FideInfo from "@/components/databases/FideInfo";
 import ScoreBubble from "@/components/panels/analysis/ScoreBubble";
 import {
   activeTabAtom,
   bestMovesFamily,
+  type BroadcastEngineMode,
+  broadcastEngineModeAtom,
+  broadcastEvalDepthAtom,
   enableAllAtom,
   engineMovesFamily,
   engineProgressFamily,
@@ -49,11 +56,14 @@ import {
 } from "@/state/atoms";
 import { getVariationLine, parsePGN } from "@/utils/chess";
 import { positionFromFen } from "@/utils/chessops";
+import { type LocalEngine, stopEngine } from "@/utils/engines";
 import { formatNodes } from "@/utils/format";
+import { getFidePlayer } from "@/utils/lichess/api";
 import type { BroadcastGameSummary } from "@/utils/lichess/broadcast";
 import { formatScore } from "@/utils/score";
 import { playSound } from "@/utils/sound";
 import type { TreeNode, TreeState } from "@/utils/treeReducer";
+import BroadcastEngineSettingsModal from "./BroadcastEngineSettingsModal";
 import classes from "./Broadcasts.module.css";
 
 interface LiveGameViewProps {
@@ -188,28 +198,115 @@ function LiveGameContent({
 
   const [activeTab, setActiveTab] = useAtom(activeTabAtom);
   useEffect(() => {
-    if (!activeTab) {
-      setActiveTab("broadcast");
-    }
-  }, [activeTab, setActiveTab]);
+    setActiveTab("broadcast");
+  }, [setActiveTab]);
 
   const [orientation, setOrientation] = useState<Color>("white");
   const [copied, setCopied] = useState(false);
-  const [engineEnabled, setEngineEnabled] = useState(false);
+  const [engines] = useAtom(enginesAtom);
   const [, enableAll] = useAtom(enableAllAtom);
+  const [engineMode, setEngineMode] = useAtom(broadcastEngineModeAtom);
+  const [evalDepth, setEvalDepth] = useAtom(broadcastEvalDepthAtom);
+  const [settingsModalOpen, setSettingsModalOpen] = useState(false);
 
-  const toggleEngine = () => {
-    const next = !engineEnabled;
-    setEngineEnabled(next);
-    enableAll(next);
-  };
+  const firstLoadedEngine = useMemo(() => {
+    return (
+      engines?.find((e) => e.loaded && e.type === "local") ||
+      engines?.find((e) => e.loaded) ||
+      null
+    );
+  }, [engines]);
 
-  // Turn engine off when unmounting or switching games
+  const [settings, setSettings] = useAtom(
+    tabEngineSettingsFamily({
+      engineId: firstLoadedEngine?.id || "",
+      defaultSettings: firstLoadedEngine?.settings ?? undefined,
+      defaultGo: firstLoadedEngine?.go ?? undefined,
+      tab: "broadcast",
+    }),
+  );
+
+  const stopAllEngines = useCallback(() => {
+    for (const engine of engines?.filter((e) => e.loaded && e.type === "local") || []) {
+      stopEngine(engine as LocalEngine, "broadcast");
+    }
+  }, [engines]);
+
+  const handleModeChange = useCallback(
+    (mode: BroadcastEngineMode) => {
+      setEngineMode(mode);
+      if (mode === "off") {
+        setSettings((prev) => ({ ...prev, enabled: false }));
+        enableAll(false);
+        stopAllEngines();
+      } else if (mode === "eval-bar") {
+        setSettings((prev) => {
+          const existing = prev.settings || [];
+          const newSettings = existing.some((o) => o.name === "MultiPV")
+            ? existing.map((o) => (o.name === "MultiPV" ? { ...o, value: 1 } : o))
+            : [...existing, { name: "MultiPV", value: 1 }];
+          return {
+            ...prev,
+            enabled: true,
+            go: { t: "Depth", c: evalDepth },
+            settings: newSettings,
+          };
+        });
+        enableAll(true);
+      } else if (mode === "full") {
+        setSettings((prev) => ({
+          ...prev,
+          enabled: true,
+        }));
+        enableAll(true);
+      }
+    },
+    [setEngineMode, setSettings, enableAll, stopAllEngines, evalDepth],
+  );
+
+  const handleEvalDepthChange = useCallback(
+    (newDepth: number) => {
+      setEvalDepth(newDepth);
+      if (engineMode === "eval-bar") {
+        setSettings((prev) => ({
+          ...prev,
+          go: { t: "Depth", c: newDepth },
+        }));
+      }
+    },
+    [engineMode, setEvalDepth, setSettings],
+  );
+
+  // Sync engine mode on mount and cleanup on unmount
   useEffect(() => {
+    if (engineMode === "eval-bar") {
+      setSettings((prev) => {
+        const existing = prev.settings || [];
+        const newSettings = existing.some((o) => o.name === "MultiPV")
+          ? existing.map((o) => (o.name === "MultiPV" ? { ...o, value: 1 } : o))
+          : [...existing, { name: "MultiPV", value: 1 }];
+        return {
+          ...prev,
+          enabled: true,
+          go: { t: "Depth", c: evalDepth },
+          settings: newSettings,
+        };
+      });
+      enableAll(true);
+    } else if (engineMode === "full") {
+      setSettings((prev) => ({ ...prev, enabled: true }));
+      enableAll(true);
+    } else {
+      setSettings((prev) => ({ ...prev, enabled: false }));
+      enableAll(false);
+      stopAllEngines();
+    }
+
     return () => {
       enableAll(false);
+      stopAllEngines();
     };
-  }, [enableAll]);
+  }, []);
 
   // Responsive board measurement
   const { ref: boardContainerRef, width: containerWidth, height: containerHeight } = useElementSize();
@@ -259,7 +356,7 @@ function LiveGameContent({
   );
 
   const engineShapes = useMemo((): DrawShape[] => {
-    if (!engineEnabled || !arrows || arrows.size === 0) return [];
+    if (engineMode !== "full" || !arrows || arrows.size === 0) return [];
     const shapes: DrawShape[] = [];
     const entries = Array.from(arrows.entries()).sort((a, b) => a[0] - b[0]);
     for (const [i, moves] of entries) {
@@ -283,7 +380,7 @@ function LiveGameContent({
       }
     }
     return shapes;
-  }, [engineEnabled, arrows]);
+  }, [engineMode, arrows]);
 
   // Extract flat main line moves for move list
   const movesList = useMemo(() => {
@@ -314,6 +411,8 @@ function LiveGameContent({
   const topPlayer = orientation === "white" ? "black" : "white";
   const bottomPlayer = orientation === "white" ? "white" : "black";
 
+  const [fideModalPlayer, setFideModalPlayer] = useState<string | null>(null);
+
   const getPlayerDetails = (side: "white" | "black") => {
     return {
       name: side === "white" ? game.white : game.black,
@@ -321,6 +420,7 @@ function LiveGameContent({
       elo: side === "white" ? game.whiteElo : game.blackElo,
       team: side === "white" ? game.whiteTeam : game.blackTeam,
       clk: side === "white" ? formattedWhite : formattedBlack,
+      fideId: side === "white" ? game.whiteFideId : game.blackFideId,
     };
   };
 
@@ -352,16 +452,28 @@ function LiveGameContent({
           </Group>
 
           <Group gap="xs">
-            {/* Local Engine toggle */}
-            <Button
-              size="xs"
-              variant={engineEnabled ? "filled" : "light"}
-              color={engineEnabled ? "teal" : "gray"}
-              leftSection={<IconCpu size={14} />}
-              onClick={toggleEngine}
-            >
-              {engineEnabled ? "Engine ON" : "Engine"}
-            </Button>
+            {/* Engine Mode & Settings Controls */}
+            <Group gap={4} wrap="nowrap">
+              <SegmentedControl
+                size="xs"
+                value={engineMode}
+                onChange={(val) => handleModeChange(val as BroadcastEngineMode)}
+                data={[
+                  { label: "Off", value: "off" },
+                  { label: "Eval Bar", value: "eval-bar" },
+                  { label: "Analysis", value: "full" },
+                ]}
+              />
+              <Tooltip label="Engine Settings (Depth, Cores, Memory)">
+                <ActionIcon
+                  variant="default"
+                  size="sm"
+                  onClick={() => setSettingsModalOpen(true)}
+                >
+                  <IconSettings size={16} />
+                </ActionIcon>
+              </Tooltip>
+            </Group>
 
             <Tooltip label="Flip board">
               <ActionIcon variant="default" size="sm" onClick={toggleOrientation}>
@@ -412,6 +524,7 @@ function LiveGameContent({
             isTurn={turnColor === topPlayer && isOngoing}
             isBlack={topPlayer === "black"}
             maxWidth={boardSize + 35}
+            onOpenFide={(name) => setFideModalPlayer(name)}
           />
 
           {/* Board + EvalBar Row */}
@@ -467,6 +580,7 @@ function LiveGameContent({
             isTurn={turnColor === bottomPlayer && isOngoing}
             isBlack={bottomPlayer === "black"}
             maxWidth={boardSize + 35}
+            onOpenFide={(name) => setFideModalPlayer(name)}
           />
         </Box>
 
@@ -518,11 +632,24 @@ function LiveGameContent({
             )}
           </Group>
 
-          {/* In-Place Local Engine Panel */}
-          {engineEnabled && (
+          {/* In-Place Local Engine Panel (Full Analysis) */}
+          {engineMode === "full" && (
             <InPlaceEnginePanel
-              fen={currentNode.fen}
+              rootFen={rootNode.fen}
               moves={variationMoves}
+              halfMoves={currentNode.halfMoves}
+              onOpenSettings={() => setSettingsModalOpen(true)}
+            />
+          )}
+
+          {/* Eval Bar Only Panel (Spoiler-free indicator) */}
+          {engineMode === "eval-bar" && (
+            <EvalBarOnlyPanel
+              engineName={firstLoadedEngine?.name || "Stockfish"}
+              depth={evalDepth}
+              rootFen={rootNode.fen}
+              moves={variationMoves}
+              onOpenSettings={() => setSettingsModalOpen(true)}
             />
           )}
 
@@ -537,8 +664,28 @@ function LiveGameContent({
         </Box>
       </Box>
 
-      {/* Engine Listener (Mounted when engine is toggled on) */}
-      {engineEnabled && <EvalListener />}
+      {/* Engine Listener (Always mounted to respond to enabled changes and stop cleanly) */}
+      <EvalListener />
+
+      {/* Engine Settings Modal */}
+      <BroadcastEngineSettingsModal
+        opened={settingsModalOpen}
+        onClose={() => setSettingsModalOpen(false)}
+        engineMode={engineMode}
+        onModeChange={handleModeChange}
+        evalDepth={evalDepth}
+        onEvalDepthChange={handleEvalDepthChange}
+        engine={firstLoadedEngine}
+        settings={settings}
+        setSettings={setSettings}
+      />
+
+      {/* FIDE Player Info Modal */}
+      <FideInfo
+        opened={!!fideModalPlayer}
+        setOpened={(opened) => !opened && setFideModalPlayer(null)}
+        name={fideModalPlayer || ""}
+      />
     </Box>
   );
 }
@@ -632,11 +779,33 @@ function useLiveGameClocks({
   };
 }
 
+function usePlayerPhoto(name?: string, fideId?: string) {
+  const query = fideId || (name && name !== "White" && name !== "Black" ? name : undefined);
+  const { data } = useSWR(
+    query ? `fide-photo-${query}` : null,
+    async () => {
+      try {
+        const p = await getFidePlayer(query!);
+        return p?.photo?.small || p?.photo?.medium || null;
+      } catch {
+        return null;
+      }
+    },
+    {
+      revalidateOnFocus: false,
+      revalidateIfStale: false,
+      dedupingInterval: 3600000 * 24, // 24 hours cache
+    },
+  );
+  return data ?? null;
+}
+
 function PlayerBar({
   details,
   isTurn,
   isBlack,
   maxWidth,
+  onOpenFide,
 }: {
   details: {
     name: string;
@@ -644,11 +813,22 @@ function PlayerBar({
     elo?: string;
     team?: string;
     clk?: string;
+    fideId?: string;
   };
   isTurn: boolean;
   isBlack: boolean;
   maxWidth: number;
+  onOpenFide?: (name: string) => void;
 }) {
+  const photoUrl = usePlayerPhoto(details.name, details.fideId);
+  const initials = details.name
+    .split(/[\s,]+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((s) => s[0])
+    .join("")
+    .toUpperCase();
+
   return (
     <Group
       justify="space-between"
@@ -661,22 +841,78 @@ function PlayerBar({
       }}
     >
       <Group gap="xs" wrap="nowrap" style={{ overflow: "hidden" }}>
-        <Box
-          w={10}
-          h={10}
-          style={{
-            borderRadius: "50%",
-            backgroundColor: isBlack ? "#111" : "#fff",
-            border: "1px solid var(--mantine-color-gray-6)",
-            flexShrink: 0,
-          }}
-        />
+        {/* Player Avatar with piece color badge indicator */}
+        <Tooltip label={`View ${details.name} profile`} openDelay={600}>
+          <Box
+            style={{
+              position: "relative",
+              cursor: onOpenFide ? "pointer" : "default",
+              display: "inline-flex",
+              alignItems: "center",
+              flexShrink: 0,
+            }}
+            onClick={() => onOpenFide?.(details.name)}
+          >
+            <Avatar
+              src={photoUrl}
+              size={30}
+              radius="xl"
+              alt={details.name}
+              styles={{
+                root: {
+                  border: isBlack
+                    ? "1px solid var(--mantine-color-gray-8)"
+                    : "1px solid var(--mantine-color-gray-5)",
+                  backgroundColor: isBlack ? "#212529" : "#e9ecef",
+                  boxShadow: "0 1px 3px rgba(0,0,0,0.15)",
+                },
+                placeholder: {
+                  color: isBlack ? "#f8f9fa" : "#111827",
+                  backgroundColor: isBlack ? "#212529" : "#e9ecef",
+                  fontWeight: 700,
+                  fontSize: 11,
+                },
+              }}
+            >
+              <span
+                style={{
+                  color: isBlack ? "#f8f9fa" : "#111827",
+                  fontWeight: 700,
+                  fontSize: 11,
+                  userSelect: "none",
+                }}
+              >
+                {initials || (isBlack ? "B" : "W")}
+              </span>
+            </Avatar>
+            <Box
+              style={{
+                position: "absolute",
+                bottom: -2,
+                right: -2,
+                width: 10,
+                height: 10,
+                borderRadius: "50%",
+                backgroundColor: isBlack ? "#111" : "#fff",
+                border: isBlack ? "1.5px solid #666" : "1.5px solid #222",
+                boxShadow: "0 1px 2px rgba(0,0,0,0.4)",
+              }}
+            />
+          </Box>
+        </Tooltip>
+
         {details.title && (
           <Badge size="xs" color="orange" variant="filled">
             {details.title}
           </Badge>
         )}
-        <Text size="sm" fw={600} lineClamp={1}>
+        <Text
+          size="sm"
+          fw={600}
+          lineClamp={1}
+          style={{ cursor: onOpenFide ? "pointer" : "default" }}
+          onClick={() => onOpenFide?.(details.name)}
+        >
           {details.name}
         </Text>
         {details.elo && (
@@ -777,12 +1013,36 @@ function MoveTable({
   );
 }
 
+function formatPvMoves(sanMoves: string[], uciMoves: string[], halfMoves: number): string {
+  const moves = sanMoves && sanMoves.length > 0 ? sanMoves : uciMoves;
+  if (!moves || moves.length === 0) return "";
+  const parts: string[] = [];
+  let currentHalf = halfMoves;
+  for (let i = 0; i < Math.min(moves.length, 10); i++) {
+    const moveNum = Math.floor(currentHalf / 2) + 1;
+    const isBlack = currentHalf % 2 === 1;
+    if (i === 0) {
+      parts.push(isBlack ? `${moveNum}... ${moves[i]}` : `${moveNum}. ${moves[i]}`);
+    } else if (!isBlack) {
+      parts.push(`${moveNum}. ${moves[i]}`);
+    } else {
+      parts.push(moves[i]);
+    }
+    currentHalf++;
+  }
+  return parts.join(" ");
+}
+
 function InPlaceEnginePanel({
-  fen,
+  rootFen,
   moves,
+  halfMoves,
+  onOpenSettings,
 }: {
-  fen: string;
+  rootFen: string;
   moves: string[];
+  halfMoves: number;
+  onOpenSettings?: () => void;
 }) {
   const [engines] = useAtom(enginesAtom);
   const activeTab = useAtomValue(activeTabAtom);
@@ -812,9 +1072,10 @@ function InPlaceEnginePanel({
     }),
   );
 
+  // Retrieve evaluated lines under the exact searching key used by EvalListener
   const currentLines: BestMoves[] =
-    engineMoves.get(`${fen}:${moves.join(",")}`) ||
-    engineMoves.get(`${fen}:`) ||
+    engineMoves.get(`${rootFen}:${moves.join(",")}`) ||
+    engineMoves.get(`${rootFen}:`) ||
     [];
 
   // MultiPV lines customization (1, 2, 3 lines)
@@ -866,6 +1127,13 @@ function InPlaceEnginePanel({
               {formatNodes(top.nps, 1)}n/s
             </Text>
           )}
+          {onOpenSettings && (
+            <Tooltip label="Engine Settings (Depth, Cores, Memory)">
+              <ActionIcon variant="subtle" size="xs" onClick={onOpenSettings}>
+                <IconSettings size={14} />
+              </ActionIcon>
+            </Tooltip>
+          )}
         </Group>
       </Group>
 
@@ -895,14 +1163,12 @@ function InPlaceEnginePanel({
 
       {/* Candidate lines */}
       {currentLines.length > 0 ? (
-        <Stack gap={4}>
+        <Stack gap={6}>
           {currentLines.slice(0, Number(currentMultiPv)).map((line, idx) => (
             <Group key={idx} justify="space-between" align="center" wrap="nowrap" gap="xs">
               <ScoreBubble size="sm" score={line.score} />
-              <Text size="xs" ff="monospace" lineClamp={1} style={{ flex: 1 }}>
-                {line.sanMoves && line.sanMoves.length > 0
-                  ? line.sanMoves.slice(0, 7).join(" ")
-                  : line.uciMoves.slice(0, 5).join(" ")}
+              <Text size="xs" ff="monospace" lineClamp={2} style={{ flex: 1, lineHeight: 1.3 }}>
+                {formatPvMoves(line.sanMoves, line.uciMoves, halfMoves)}
               </Text>
             </Group>
           ))}
@@ -915,3 +1181,86 @@ function InPlaceEnginePanel({
     </Box>
   );
 }
+
+function EvalBarOnlyPanel({
+  engineName,
+  depth,
+  rootFen,
+  moves,
+  onOpenSettings,
+}: {
+  engineName: string;
+  depth: number;
+  rootFen: string;
+  moves: string[];
+  onOpenSettings?: () => void;
+}) {
+  const [engines] = useAtom(enginesAtom);
+  const activeTab = useAtomValue(activeTabAtom);
+  const tabId = activeTab || "broadcast";
+  const firstLoadedEngine = engines?.find((e) => e.loaded);
+
+  const engineMoves = useAtomValue(
+    engineMovesFamily({
+      engine: firstLoadedEngine?.id || "",
+      tab: tabId,
+    }),
+  );
+
+  const progress = useAtomValue(
+    engineProgressFamily({
+      engine: firstLoadedEngine?.id || "",
+      tab: tabId,
+    }),
+  );
+
+  const currentLines =
+    engineMoves.get(`${rootFen}:${moves.join(",")}`) ||
+    engineMoves.get(`${rootFen}:`) ||
+    [];
+  const top = currentLines[0];
+  const isCalculating = progress < 100;
+
+  return (
+    <Box p="xs" bg="dark.8" style={{ borderBottom: "1px solid var(--mantine-color-default-border)" }}>
+      <Group justify="space-between" align="center" mb={4}>
+        <Group gap={6}>
+          <IconCpu size={14} color="var(--mantine-color-teal-5)" />
+          <Text size="xs" fw={600}>
+            Eval Bar Only
+          </Text>
+          <Badge size="xs" variant="light" color="teal">
+            d{depth} · 1 line
+          </Badge>
+        </Group>
+
+        <Group gap={6}>
+          {top?.depth !== undefined ? (
+            <Text size="xs" c="dimmed">
+              depth {top.depth}/{depth}
+            </Text>
+          ) : (
+            <Text size="xs" c="dimmed">
+              {engineName}
+            </Text>
+          )}
+          {onOpenSettings && (
+            <Tooltip label="Engine Settings (Depth, Cores, Memory)">
+              <ActionIcon variant="subtle" size="xs" onClick={onOpenSettings}>
+                <IconSettings size={14} />
+              </ActionIcon>
+            </Tooltip>
+          )}
+        </Group>
+      </Group>
+
+      <Progress
+        value={progress}
+        size="xs"
+        animated={isCalculating}
+        color="teal"
+      />
+    </Box>
+  );
+}
+
