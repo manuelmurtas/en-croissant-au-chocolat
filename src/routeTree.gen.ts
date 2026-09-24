@@ -10,6 +10,7 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as SettingsRouteImport } from './routes/settings'
+import { Route as PipRouteImport } from './routes/pip'
 import { Route as FilesRouteImport } from './routes/files'
 import { Route as EnginesRouteImport } from './routes/engines'
 import { Route as BroadcastsRouteImport } from './routes/broadcasts'
@@ -21,6 +22,11 @@ import { Route as DatabasesDatabaseIdRouteImport } from './routes/databases/$dat
 const SettingsRoute = SettingsRouteImport.update({
   id: '/settings',
   path: '/settings',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const PipRoute = PipRouteImport.update({
+  id: '/pip',
+  path: '/pip',
   getParentRoute: () => rootRouteImport,
 } as any)
 const FilesRoute = FilesRouteImport.update({
@@ -65,6 +71,7 @@ export interface FileRoutesByFullPath {
   '/broadcasts': typeof BroadcastsRoute
   '/engines': typeof EnginesRoute
   '/files': typeof FilesRoute
+  '/pip': typeof PipRoute
   '/settings': typeof SettingsRoute
   '/databases/$databaseId': typeof DatabasesDatabaseIdRoute
   '/databases/': typeof DatabasesIndexRoute
@@ -75,6 +82,7 @@ export interface FileRoutesByTo {
   '/broadcasts': typeof BroadcastsRoute
   '/engines': typeof EnginesRoute
   '/files': typeof FilesRoute
+  '/pip': typeof PipRoute
   '/settings': typeof SettingsRoute
   '/databases/$databaseId': typeof DatabasesDatabaseIdRoute
   '/databases': typeof DatabasesIndexRoute
@@ -86,6 +94,7 @@ export interface FileRoutesById {
   '/broadcasts': typeof BroadcastsRoute
   '/engines': typeof EnginesRoute
   '/files': typeof FilesRoute
+  '/pip': typeof PipRoute
   '/settings': typeof SettingsRoute
   '/databases/$databaseId': typeof DatabasesDatabaseIdRoute
   '/databases/': typeof DatabasesIndexRoute
@@ -98,6 +107,7 @@ export interface FileRouteTypes {
     | '/broadcasts'
     | '/engines'
     | '/files'
+    | '/pip'
     | '/settings'
     | '/databases/$databaseId'
     | '/databases/'
@@ -108,6 +118,7 @@ export interface FileRouteTypes {
     | '/broadcasts'
     | '/engines'
     | '/files'
+    | '/pip'
     | '/settings'
     | '/databases/$databaseId'
     | '/databases'
@@ -118,6 +129,7 @@ export interface FileRouteTypes {
     | '/broadcasts'
     | '/engines'
     | '/files'
+    | '/pip'
     | '/settings'
     | '/databases/$databaseId'
     | '/databases/'
@@ -129,6 +141,7 @@ export interface RootRouteChildren {
   BroadcastsRoute: typeof BroadcastsRoute
   EnginesRoute: typeof EnginesRoute
   FilesRoute: typeof FilesRoute
+  PipRoute: typeof PipRoute
   SettingsRoute: typeof SettingsRoute
   DatabasesDatabaseIdRoute: typeof DatabasesDatabaseIdRoute
   DatabasesIndexRoute: typeof DatabasesIndexRoute
@@ -141,6 +154,13 @@ declare module '@tanstack/react-router' {
       path: '/settings'
       fullPath: '/settings'
       preLoaderRoute: typeof SettingsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/pip': {
+      id: '/pip'
+      path: '/pip'
+      fullPath: '/pip'
+      preLoaderRoute: typeof PipRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/files': {
@@ -201,6 +221,7 @@ const rootRouteChildren: RootRouteChildren = {
   BroadcastsRoute: BroadcastsRoute,
   EnginesRoute: EnginesRoute,
   FilesRoute: FilesRoute,
+  PipRoute: PipRoute,
   SettingsRoute: SettingsRoute,
   DatabasesDatabaseIdRoute: DatabasesDatabaseIdRoute,
   DatabasesIndexRoute: DatabasesIndexRoute,

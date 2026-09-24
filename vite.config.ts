@@ -39,6 +39,12 @@ export default defineConfig({
         minify: isDebug ? false : "esbuild",
         sourcemap: isDebug ? "inline" : false,
         target: process.env.TAURI_ENV_PLATFORM == "windows" ? "chrome105" : "safari13",
+        rollupOptions: {
+            input: {
+                main: resolve(import.meta.dirname, "index.html"),
+                pip: resolve(import.meta.dirname, "pip.html"),
+            },
+        },
     },
     resolve: {
         alias: {

@@ -1,6 +1,7 @@
 import type { DrawShape } from "@lichess-org/chessground/draw";
 import type { Color } from "@lichess-org/chessground/types";
 import { makeSquare, type NormalMove, parseUci } from "chessops";
+import { makeFen } from "chessops/fen";
 import {
   ActionIcon,
   Avatar,
@@ -24,15 +25,18 @@ import {
   IconCopy,
   IconCpu,
   IconExternalLink,
+  IconPictureInPicture,
   IconPlayerSkipBack,
   IconPlayerSkipForward,
   IconPlayerTrackNext,
   IconPlayerTrackPrev,
   IconSettings,
 } from "@tabler/icons-react";
+import { invoke } from "@tauri-apps/api/core";
 import { useAtom, useAtomValue } from "jotai";
 import { useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import useSWR from "swr/immutable";
+import { PIP_CHANNEL_NAME, PIP_STORAGE_KEY, type PipState } from "./PipGameView";
 import { useStore } from "zustand";
 import { useShallow } from "zustand/react/shallow";
 import type { BestMoves, Score } from "@/bindings";
@@ -55,7 +59,7 @@ import {
   tabEngineSettingsFamily,
 } from "@/state/atoms";
 import { getVariationLine, parsePGN } from "@/utils/chess";
-import { positionFromFen } from "@/utils/chessops";
+import { positionFromFen, swapMove } from "@/utils/chessops";
 import { type LocalEngine, stopEngine } from "@/utils/engines";
 import { formatNodes } from "@/utils/format";
 import { getFidePlayer } from "@/utils/lichess/api";
@@ -65,6 +69,10 @@ import { playSound } from "@/utils/sound";
 import type { TreeNode, TreeState } from "@/utils/treeReducer";
 import BroadcastEngineSettingsModal from "./BroadcastEngineSettingsModal";
 import classes from "./Broadcasts.module.css";
+
+// MultiPV line colors: 1st line green, 2nd line yellow, 3rd line red, 4th+ blue
+export const LINE_ARROW_COLORS = ["green", "yellow", "red", "blue"];
+export const LINE_HEX_COLORS = ["#15781B", "#e68f00", "#882020", "#003088"];
 
 interface LiveGameViewProps {
   game: BroadcastGameSummary;
@@ -322,7 +330,7 @@ function LiveGameContent({
   const isOngoing = game.result === "*";
 
   // Real-time ticking clocks
-  const { formattedWhite, formattedBlack } = useLiveGameClocks({
+  const { clocks, formattedWhite, formattedBlack } = useLiveGameClocks({
     whiteClk: game.whiteClk,
     blackClk: game.blackClk,
     turn: turnColor,
@@ -347,40 +355,68 @@ function LiveGameContent({
     setTimeout(() => setCopied(false), 2000);
   };
 
-  // Engine arrows on board
-  const arrows = useAtomValue(
-    bestMovesFamily({
-      fen: rootNode.fen,
-      gameMoves: variationMoves,
+  // Engine arrows on board (MultiPV: 1st line green, 2nd yellow, 3rd red)
+  const engineMoves = useAtomValue(
+    engineMovesFamily({
+      engine: firstLoadedEngine?.id || "",
+      tab: "broadcast",
     }),
   );
 
+  const currentMultiPv = Number(
+    settings.settings?.find((s) => s.name === "MultiPV")?.value ?? 1,
+  );
+
+  const currentLines: BestMoves[] = useMemo(() => {
+    if (!engineMoves) return [];
+    const direct =
+      engineMoves.get(`${rootNode.fen}:${variationMoves.join(",")}`) ||
+      engineMoves.get(`${rootNode.fen}:`);
+    if (direct && direct.length > 0) return direct;
+
+    const [p] = positionFromFen(rootNode.fen);
+    if (p) {
+      for (const m of variationMoves) {
+        const parsed = parseUci(m);
+        if (parsed) p.play(parsed);
+      }
+      const setupFen = makeFen(p.toSetup());
+      const transposed = engineMoves.get(`${swapMove(setupFen)}:`);
+      if (transposed && transposed.length > 0) return transposed;
+    }
+    return [];
+  }, [engineMoves, rootNode.fen, variationMoves]);
+
   const engineShapes = useMemo((): DrawShape[] => {
-    if (engineMode !== "full" || !arrows || arrows.size === 0) return [];
-    const shapes: DrawShape[] = [];
-    const entries = Array.from(arrows.entries()).sort((a, b) => a[0] - b[0]);
-    for (const [i, moves] of entries) {
-      if (i < 3 && moves.length > 0) {
-        const topPv = moves[0].pv;
-        if (topPv && topPv.length > 0) {
-          const uci = topPv[0];
-          const m = parseUci(uci) as NormalMove | undefined;
-          if (m) {
-            const from = makeSquare(m.from);
-            const to = makeSquare(m.to);
-            if (from && to) {
-              shapes.push({
-                orig: from,
-                dest: to,
-                brush: i === 0 ? "green" : "blue",
-              });
-            }
-          }
+    if (engineMode !== "full" || !currentLines || currentLines.length === 0) return [];
+
+    const linesToDisplay = currentLines.slice(0, currentMultiPv);
+    const forwardShapes: DrawShape[] = [];
+
+    for (let idx = 0; idx < linesToDisplay.length; idx++) {
+      const line = linesToDisplay[idx];
+      const uci = line.uciMoves?.[0];
+      if (!uci) continue;
+
+      const m = parseUci(uci) as NormalMove | undefined;
+      if (!m) continue;
+
+      const from = makeSquare(m.from);
+      const to = makeSquare(m.to);
+      if (from && to) {
+        if (!forwardShapes.some((s) => s.orig === from && s.dest === to)) {
+          forwardShapes.push({
+            orig: from,
+            dest: to,
+            brush: LINE_ARROW_COLORS[idx] || "blue",
+          });
         }
       }
     }
-    return shapes;
-  }, [engineMode, arrows]);
+
+    // Reverse array so top line (idx 0, green) is rendered last and thus on top in SVG stacking order
+    return forwardShapes.reverse();
+  }, [engineMode, currentLines, currentMultiPv]);
 
   // Extract flat main line moves for move list
   const movesList = useMemo(() => {
@@ -426,6 +462,121 @@ function LiveGameContent({
 
   const topDetails = getPlayerDetails(topPlayer);
   const bottomDetails = getPlayerDetails(bottomPlayer);
+
+  // Mini Player (Picture-in-Picture) state & channel sync
+  const [isPipActive, setIsPipActive] = useState(false);
+  const pipChannelRef = useRef<BroadcastChannel | null>(null);
+
+  useEffect(() => {
+    invoke<boolean>("is_pip_window_open")
+      .then((isOpen) => setIsPipActive(isOpen))
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    let channel: BroadcastChannel | null = null;
+    try {
+      channel = new BroadcastChannel(PIP_CHANNEL_NAME);
+      pipChannelRef.current = channel;
+
+      channel.onmessage = (event) => {
+        if (event.data?.type === "REQUEST_STATE") {
+          if (latestPipStateRef.current) {
+            channel?.postMessage({
+              type: "SYNC_STATE",
+              state: latestPipStateRef.current,
+            });
+          }
+        } else if (event.data?.type === "PIP_CLOSED") {
+          setIsPipActive(false);
+        }
+      };
+    } catch (err) {
+      console.warn("Failed to create BroadcastChannel in LiveGameView:", err);
+    }
+
+    return () => {
+      try {
+        channel?.close();
+      } catch {}
+      pipChannelRef.current = null;
+    };
+  }, []);
+
+  const currentPipState = useMemo((): PipState => {
+    return {
+      white: {
+        name: game.white,
+        title: game.whiteTitle,
+        elo: game.whiteElo,
+        fideId: game.whiteFideId,
+        time: clocks.white ?? undefined,
+      },
+      black: {
+        name: game.black,
+        title: game.blackTitle,
+        elo: game.blackElo,
+        fideId: game.blackFideId,
+        time: clocks.black ?? undefined,
+      },
+      turn: turnColor,
+      isOngoing,
+      fen: currentNode.fen,
+      orientation,
+      evalScore: engineMode !== "off" ? (displayScore ?? null) : null,
+      evalDepth: engineMode !== "off" ? (currentLines[0]?.depth ?? null) : null,
+      evalMode: engineMode,
+      shapes: engineShapes,
+      boardTitle: `${game.white} vs ${game.black}`,
+    };
+  }, [
+    game.white,
+    game.whiteTitle,
+    game.whiteElo,
+    game.whiteFideId,
+    game.black,
+    game.blackTitle,
+    game.blackElo,
+    game.blackFideId,
+    clocks.white,
+    clocks.black,
+    turnColor,
+    isOngoing,
+    currentNode.fen,
+    orientation,
+    engineMode,
+    displayScore,
+    currentLines,
+    engineShapes,
+  ]);
+
+  const latestPipStateRef = useRef<PipState>(currentPipState);
+  latestPipStateRef.current = currentPipState;
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(PIP_STORAGE_KEY, JSON.stringify(currentPipState));
+      pipChannelRef.current?.postMessage({
+        type: "SYNC_STATE",
+        state: currentPipState,
+      });
+    } catch {}
+  }, [currentPipState]);
+
+  const handleTogglePip = useCallback(async () => {
+    try {
+      const isOpen = await invoke<boolean>("is_pip_window_open");
+      if (isOpen) {
+        await invoke("close_pip_window");
+        setIsPipActive(false);
+      } else {
+        await invoke("open_pip_window");
+        setIsPipActive(true);
+      }
+    } catch (err) {
+      console.error("Failed to toggle PiP window:", err);
+    }
+  }, []);
 
   return (
     <Box h="100%" style={{ display: "flex", flexDirection: "column", overflow: "hidden" }}>
@@ -484,6 +635,17 @@ function LiveGameContent({
             <Tooltip label={copied ? "Copied!" : "Copy PGN"}>
               <ActionIcon variant="default" size="sm" onClick={copyPgn}>
                 {copied ? <IconCheck size={16} color="green" /> : <IconCopy size={16} />}
+              </ActionIcon>
+            </Tooltip>
+
+            <Tooltip label={isPipActive ? "Close Mini Player (Always on Top)" : "Pop up Mini Player (Always on Top)"}>
+              <ActionIcon
+                variant={isPipActive ? "filled" : "default"}
+                color={isPipActive ? "teal" : undefined}
+                size="sm"
+                onClick={handleTogglePip}
+              >
+                <IconPictureInPicture size={16} />
               </ActionIcon>
             </Tooltip>
 
@@ -774,6 +936,7 @@ function useLiveGameClocks({
   };
 
   return {
+    clocks,
     formattedWhite: format(clocks.white),
     formattedBlack: format(clocks.black),
   };
@@ -1166,6 +1329,15 @@ function InPlaceEnginePanel({
         <Stack gap={6}>
           {currentLines.slice(0, Number(currentMultiPv)).map((line, idx) => (
             <Group key={idx} justify="space-between" align="center" wrap="nowrap" gap="xs">
+              <Box
+                style={{
+                  width: 8,
+                  height: 8,
+                  borderRadius: "50%",
+                  backgroundColor: LINE_HEX_COLORS[idx] || "#003088",
+                  flexShrink: 0,
+                }}
+              />
               <ScoreBubble size="sm" score={line.score} />
               <Text size="xs" ff="monospace" lineClamp={2} style={{ flex: 1, lineHeight: 1.3 }}>
                 {formatPvMoves(line.sanMoves, line.uciMoves, halfMoves)}

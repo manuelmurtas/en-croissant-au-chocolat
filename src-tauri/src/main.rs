@@ -168,7 +168,10 @@ fn main() {
             preload_reference_db,
             get_progress,
             clear_progress,
-            get_sound_server_port
+            get_sound_server_port,
+            open_pip_window,
+            close_pip_window,
+            is_pip_window_open
         ))
         .events(tauri_specta::collect_events!(
             BestMovesPayload,
@@ -199,7 +202,11 @@ fn main() {
     ];
 
     tauri::Builder::default()
-        .plugin(tauri_plugin_window_state::Builder::new().build())
+        .plugin(
+            tauri_plugin_window_state::Builder::new()
+                .with_filter(|window| window != "pip")
+                .build(),
+        )
         .plugin(tauri_plugin_process::init())
         .plugin(
             tauri_plugin_log::Builder::default()
@@ -274,4 +281,46 @@ fn is_bmi2_compatible() -> bool {
 fn memory_size() -> u32 {
     let total_bytes = sysinfo::System::new_all().total_memory();
     (total_bytes / 1024 / 1024) as u32
+}
+
+#[tauri::command]
+#[specta::specta]
+async fn open_pip_window(app: tauri::AppHandle) -> Result<(), String> {
+    if let Some(window) = app.get_webview_window("pip") {
+        let _ = window.show();
+        let _ = window.unminimize();
+        let _ = window.set_focus();
+        return Ok(());
+    }
+
+    tauri::WebviewWindowBuilder::new(
+        &app,
+        "pip",
+        tauri::WebviewUrl::App("pip.html".into()),
+    )
+    .title("Live Game - Mini Player")
+    .inner_size(280.0, 360.0)
+    .min_inner_size(200.0, 240.0)
+    .always_on_top(true)
+    .resizable(true)
+    .decorations(true)
+    .build()
+    .map_err(|e| e.to_string())?;
+
+    Ok(())
+}
+
+#[tauri::command]
+#[specta::specta]
+async fn close_pip_window(app: tauri::AppHandle) -> Result<(), String> {
+    if let Some(window) = app.get_webview_window("pip") {
+        let _ = window.close();
+    }
+    Ok(())
+}
+
+#[tauri::command]
+#[specta::specta]
+fn is_pip_window_open(app: tauri::AppHandle) -> bool {
+    app.get_webview_window("pip").is_some()
 }

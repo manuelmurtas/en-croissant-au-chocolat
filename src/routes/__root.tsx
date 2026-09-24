@@ -1,10 +1,11 @@
-import { AppShell } from "@mantine/core";
+import { AppShell, Box } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
 import { createRootRouteWithContext, Outlet, useNavigate } from "@tanstack/react-router";
 import { TauriEvent } from "@tauri-apps/api/event";
 import { Menu, MenuItem, PredefinedMenuItem, Submenu } from "@tauri-apps/api/menu";
 import { appLogDir, resolve } from "@tauri-apps/api/path";
 import { getCurrentWindow } from "@tauri-apps/api/window";
+import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { ask, message, open } from "@tauri-apps/plugin-dialog";
 import { platform } from "@tauri-apps/plugin-os";
 import { exit, relaunch } from "@tauri-apps/plugin-process";
@@ -350,6 +351,33 @@ function RootLayout() {
       unlisten.then((fn) => fn());
     };
   }, [navigate, setTabs, setActiveTab]);
+
+  const isPip = useMemo(() => {
+    try {
+      const win = getCurrentWebviewWindow();
+      if (win.label === "pip") return true;
+    } catch {}
+    return (
+      typeof window !== "undefined" &&
+      (window.location.pathname.startsWith("/pip") ||
+        window.location.hash.includes("pip"))
+    );
+  }, []);
+
+  if (isPip) {
+    return (
+      <Box
+        style={{
+          width: "100vw",
+          height: "100vh",
+          overflow: "hidden",
+          backgroundColor: "var(--mantine-color-dark-8, #141517)",
+        }}
+      >
+        <Outlet />
+      </Box>
+    );
+  }
 
   return (
     <AppShell
