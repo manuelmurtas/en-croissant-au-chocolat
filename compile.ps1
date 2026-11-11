@@ -14,6 +14,10 @@ $cargoBin = "$env:USERPROFILE\.cargo\bin"
 if ((Test-Path $cargoBin) -and ($env:PATH -notlike "*$cargoBin*")) {
     $env:PATH = "$cargoBin;$env:PATH"
 }
+$pnpmBin = "$env:LOCALAPPDATA\pnpm\bin"
+if ((Test-Path $pnpmBin) -and ($env:PATH -notlike "*$pnpmBin*")) {
+    $env:PATH = "$pnpmBin;$env:PATH"
+}
 
 Write-Host "==> Compiling En Croissant..." -ForegroundColor Cyan
 
