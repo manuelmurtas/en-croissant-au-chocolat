@@ -50,13 +50,16 @@ function EvalListener() {
     }
     return {
       isGameOver: pos.isEnd(),
+      isCheck: pos.isCheck(),
       finalFen: makeFen(pos.toSetup()),
     };
   }, [fen, moves]);
 
+  const effectiveThreat = (threat as boolean) && !isCheck;
+
   const { searchingFen, searchingMoves } = useMemo(
     () =>
-      match(threat as boolean)
+      match(effectiveThreat)
         .with(true, () => ({
           searchingFen: swapMove(finalFen || INITIAL_FEN),
           searchingMoves: [],
@@ -66,7 +69,7 @@ function EvalListener() {
           searchingMoves: moves,
         }))
         .exhaustive(),
-    [fen, moves, threat, finalFen],
+    [fen, moves, effectiveThreat, finalFen],
   );
 
   const firstEngineWithLines = useAtomValue(
@@ -89,7 +92,8 @@ function EvalListener() {
         searchingMoves={searchingMoves}
         fen={fen}
         moves={moves}
-        threat={threat}
+        threat={effectiveThreat}
+        isCheck={isCheck}
       />
     ));
 }
@@ -98,6 +102,7 @@ function EngineListener({
   engine,
   firstEngineWithLines,
   isGameOver,
+  isCheck,
   finalFen,
   searchingFen,
   searchingMoves,
@@ -108,6 +113,7 @@ function EngineListener({
   engine: Engine;
   firstEngineWithLines: string | null;
   isGameOver: boolean;
+  isCheck: boolean;
   finalFen: string;
   searchingFen: string;
   searchingMoves: string[];
@@ -154,17 +160,20 @@ function EngineListener({
         !isGameOver
       ) {
         startTransition(() => {
+          setProgress(payload.progress);
+          if (ev.length === 0) {
+            return;
+          }
           setEngineVariation((prev) => {
             const newMap = new Map(prev);
             newMap.set(`${searchingFen}:${searchingMoves.join(",")}`, ev);
             if (threat) {
               newMap.delete(`${fen}:${moves.join(",")}`);
-            } else if (finalFen) {
+            } else if (finalFen && !isCheck) {
               newMap.delete(`${swapMove(finalFen)}:`);
             }
             return newMap;
           });
-          setProgress(payload.progress);
           const shouldSetScore =
             firstEngineWithLines === engine.id || firstEngineWithLines === null;
           if (shouldSetScore) {
@@ -181,6 +190,7 @@ function EngineListener({
     setScore,
     settings.enabled,
     isGameOver,
+    isCheck,
     searchingFen,
     searchingMovesKey,
     searchingMoves,
@@ -190,7 +200,7 @@ function EngineListener({
     firstEngineWithLines,
     threat,
     fen,
-    moves,
+    JSON.stringify(moves),
     finalFen,
   ]);
 

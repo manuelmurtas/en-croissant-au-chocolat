@@ -13,6 +13,7 @@ import { listen } from "@tauri-apps/api/event";
 import { useAtom, useAtomValue } from "jotai";
 import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
+import useSWR from "swr";
 import type { DatabaseInfo } from "@/bindings";
 import { commands } from "@/bindings";
 import { sessionsAtom } from "@/state/atoms";
@@ -27,10 +28,12 @@ import LichessLogo from "./LichessLogo";
 function Accounts() {
   const { t } = useTranslation();
   const [sessions, setSessions] = useAtom(sessionsAtom);
-  const [databases, setDatabases] = useState<DatabaseInfo[]>([]);
-  useEffect(() => {
-    getDatabases().then((dbs) => setDatabases(dbs));
-  }, []);
+  const isListening = useRef(false);
+  const { data: databases = [], mutate } = useSWR("databases", () => getDatabases());
+  const setDatabases: React.Dispatch<React.SetStateAction<DatabaseInfo[]>> = (update) =>
+    mutate((current) => (typeof update === "function" ? update(current ?? []) : update), {
+      revalidate: false,
+    });
   const [open, setOpen] = useState(false);
 
   function addChessComSession(alias: string, session: ChessComSession) {
