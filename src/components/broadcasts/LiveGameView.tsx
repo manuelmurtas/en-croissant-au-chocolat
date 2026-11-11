@@ -746,24 +746,6 @@ function LiveGameContent({
     };
   }, [analysisId]);
 
-  // Automatically trigger review only when moves actually need evaluation (never on harmless refreshes)
-  useEffect(() => {
-    if (
-      engineMode !== "off" &&
-      firstLoadedEngine &&
-      firstLoadedEngine.type === "local" &&
-      !isReviewingRef.current
-    ) {
-      const unanalyzedCount = countUnanalyzedMoves(rootNode);
-      if (unanalyzedCount > 0) {
-        const timer = setTimeout(() => {
-          runLiveGameReview();
-        }, 500);
-        return () => clearTimeout(timer);
-      }
-    }
-  }, [engineMode, firstLoadedEngine, rootNode, runLiveGameReview]);
-
   // Book plies detection: check mainline FENs against ECO openings database
   const [bookPlies, setBookPlies] = useState<number>(0);
 
@@ -1249,14 +1231,14 @@ function LiveGameContent({
             </Group>
 
             <Group gap={6} align="center">
-              {firstLoadedEngine && engineMode !== "off" && (
+              {firstLoadedEngine && firstLoadedEngine.type === "local" && (
                 <Button
                   size="compact-xs"
                   variant={isReviewing ? "filled" : "light"}
                   color="teal"
                   loading={isReviewing}
                   leftSection={<IconZoomCheck size={14} />}
-                  onClick={() => runLiveGameReview(true)}
+                  onClick={() => runLiveGameReview(countUnanalyzedMoves(rootNode) === 0)}
                   title="Game Review (Stockfish Depth 20)"
                 >
                   {isReviewing
