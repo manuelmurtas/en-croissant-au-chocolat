@@ -28,6 +28,11 @@ if (-not (Get-Command pnpm -ErrorAction SilentlyContinue)) {
 
 if (-not (Get-Command pnpm -ErrorAction SilentlyContinue)) {
     Write-Host "Error: 'pnpm' command was not found in PATH." -ForegroundColor Red
+    Write-Host "You can reinstall it by running in PowerShell:" -ForegroundColor Yellow
+    Write-Host "    winget install OpenJS.NodeJS.LTS" -ForegroundColor White
+    Write-Host "    winget install pnpm.pnpm" -ForegroundColor White
+    Write-Host "Or via standalone script:" -ForegroundColor Gray
+    Write-Host "    iwr https://get.pnpm.io/install.ps1 -useb | iex" -ForegroundColor Gray
     exit 1
 }
 
