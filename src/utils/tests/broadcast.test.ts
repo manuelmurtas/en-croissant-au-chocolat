@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseBroadcastGames } from "../lichess/broadcast";
+import { computeRoundAverageRating, parseBroadcastGames } from "../lichess/broadcast";
 
 const SAMPLE_PGN = `
 [Event "Olymp 2026 Women"]
@@ -57,6 +57,11 @@ describe("parseBroadcastGames", () => {
     expect(games[1].boardNumber).toBe(196);
     expect(games[1].white).toBe("Fyfield-Jones, Kaellaa");
     expect(games[1].result).toBe("0-1");
+  });
+
+  it("correctly computes round average rating", () => {
+    const avg = computeRoundAverageRating(SAMPLE_PGN);
+    expect(avg).toBe(1650);
   });
 });
 

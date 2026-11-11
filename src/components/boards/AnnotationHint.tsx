@@ -1,8 +1,50 @@
-import { Box } from "@mantine/core";
+import { Box, Tooltip } from "@mantine/core";
 import type { Color, Square } from "chessops";
 import type { ReactNode } from "react";
 import { ANNOTATION_INFO, type Annotation } from "@/utils/annotation";
 import { squareToCoordinates } from "@/utils/chessops";
+import { getReviewColor } from "@/utils/gameReview";
+
+export function AnnotationBadge({
+  annotation,
+  size = 15,
+}: {
+  annotation: Annotation;
+  size?: number;
+}) {
+  const info = ANNOTATION_INFO[annotation];
+  if (!annotation || !info) return null;
+
+  const bgColor = getReviewColor(annotation);
+
+  return (
+    <Tooltip label={`${info.name} (${annotation})`} withArrow openDelay={200} position="top">
+      <Box
+        style={{
+          display: "inline-flex",
+          alignItems: "center",
+          justifyContent: "center",
+          width: size,
+          height: size,
+          minWidth: size,
+          borderRadius: "50%",
+          flexShrink: 0,
+        }}
+        bg={bgColor}
+      >
+        <svg viewBox="0 0 100 100" width={size * 0.85} height={size * 0.85}>
+          <g>
+            {glyphToSvg[annotation] || (
+              <text x="50" y="68" textAnchor="middle" fill="#fff" fontSize="55" fontWeight="bold">
+                {annotation}
+              </text>
+            )}
+          </g>
+        </svg>
+      </Box>
+    </Tooltip>
+  );
+}
 
 export default function AnnotationHint({
   square,
@@ -14,7 +56,7 @@ export default function AnnotationHint({
   orientation: Color;
 }) {
   const { file, rank } = squareToCoordinates(square, orientation);
-  const color = ANNOTATION_INFO[annotation]?.color || "gray";
+  const color = getReviewColor(annotation);
 
   return (
     <Box
@@ -262,4 +304,30 @@ const glyphToSvg: Record<Annotation, ReactNode> = {
       />
     </>
   ),
+  "★": (
+    <>
+      <polygon
+        fill="#fff"
+        points="50,15 61,38 86,40 67,57 73,82 50,68 27,82 33,57 14,40 39,38"
+      />
+    </>
+  ),
+  "✓": (
+    <>
+      <path
+        fill="#fff"
+        d="M38 72 L18 52 L26 44 L38 56 L74 20 L82 28 Z"
+      />
+    </>
+  ),
+  "📖": (
+    <>
+      <path
+        fill="#fff"
+        d="M18 26 C26 22 36 21 47 26 L47 74 C36 69 26 70 18 74 Z M82 26 C74 22 64 21 53 26 L53 74 C64 69 74 70 82 74 Z"
+      />
+    </>
+  ),
 } as const;
+
+export { glyphToSvg };

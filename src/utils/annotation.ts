@@ -17,6 +17,9 @@ export type Annotation =
     | "??"
     | "!?"
     | "?!"
+    | "📖"
+    | "★"
+    | "✓"
     | "+-"
     | "±"
     | "⩲"
@@ -70,6 +73,9 @@ export const NAG_INFO = new Map<string, Annotation>([
     ["$139", "⊕"],
     ["$140", "∆"],
     ["$146", "N"],
+    ["$220", "★"],
+    ["$221", "✓"],
+    ["$222", "📖"],
 ]);
 
 type AnnotationInfo = {
@@ -91,10 +97,31 @@ export const ANNOTATION_INFO: Record<Annotation, AnnotationInfo> = {
     },
     "!": {
         group: "basic",
-        name: "Good",
+        name: "Great Move",
         translationKey: "Good",
-        color: "teal",
+        color: "blue",
         nag: 1,
+    },
+    "★": {
+        group: "basic",
+        name: "Best Move",
+        translationKey: "Best",
+        color: "teal",
+        nag: 220,
+    },
+    "✓": {
+        group: "basic",
+        name: "Excellent",
+        translationKey: "Excellent",
+        color: "lime",
+        nag: 221,
+    },
+    "📖": {
+        group: "basic",
+        name: "Book Move",
+        translationKey: "Book",
+        color: "orange",
+        nag: 222,
     },
     "!?": {
         group: "basic",
@@ -191,6 +218,6 @@ export const ANNOTATION_INFO: Record<Annotation, AnnotationInfo> = {
 
 export function isBasicAnnotation(
     annotation: string,
-): annotation is "!" | "!!" | "?" | "??" | "!?" | "?!" {
-    return ["!", "!!", "?", "??", "!?", "?!"].includes(annotation);
+): annotation is "!" | "!!" | "?" | "??" | "!?" | "?!" | "📖" | "★" | "✓" | "⊗" {
+    return ["!", "!!", "?", "??", "!?", "?!", "📖", "★", "✓", "⊗"].includes(annotation);
 }

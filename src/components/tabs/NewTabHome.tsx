@@ -29,6 +29,7 @@ import CreateRepertoireModal from "./CreateRepertoireModal";
 import ImportModal from "./ImportModal";
 import classes from "./NewTabHome.module.css";
 import {
+  IconBroadcast,
   IconChess,
   IconClock,
   IconFileImport,
@@ -227,6 +228,17 @@ export default function NewTabHome({ id }: { id: string }) {
       },
     },
     {
+      icon: <IconBroadcast size={60} />,
+      title: t("Home.Card.Broadcasts.Title", { defaultValue: "Broadcast" }),
+      description: t("Home.Card.Broadcasts.Desc", {
+        defaultValue: "Follow live chess tournaments and broadcasts",
+      }),
+      label: t("Home.Card.Broadcasts.Button", { defaultValue: "Watch" }),
+      onClick: () => {
+        navigate({ to: "/broadcasts" });
+      },
+    },
+    {
       icon: <IconPuzzle size={60} />,
       title: t("Home.Card.Puzzle.Title"),
       description: t("Home.Card.Puzzle.Desc"),
@@ -253,7 +265,7 @@ export default function NewTabHome({ id }: { id: string }) {
       />
       <CreateRepertoireModal opened={openRepertoireModal} setOpened={setOpenRepertoireModal} />
       <Stack gap="lg" pt="sm">
-        <SimpleGrid cols={{ base: 1, sm: 2, lg: 5 }}>
+        <SimpleGrid cols={{ base: 1, sm: 2, md: 3, lg: 6 }}>
           {cards.map((card) => (
             <Card shadow="sm" p="lg" radius="md" withBorder key={card.title}>
               <Stack align="center" h="100%" justify="space-between">

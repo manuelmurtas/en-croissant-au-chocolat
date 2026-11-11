@@ -6,7 +6,6 @@ import {
   Group,
   Loader,
   Select,
-  Stack,
   Tabs,
   Text,
   Title,
@@ -21,10 +20,9 @@ import {
   IconRefresh,
 } from "@tabler/icons-react";
 import { openUrl } from "@tauri-apps/plugin-opener";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import useSWR from "swr";
 import {
-  type BroadcastRound,
   type BroadcastTour,
   fetchRoundPgn,
   fetchTourDetail,

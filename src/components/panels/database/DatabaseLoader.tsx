@@ -10,23 +10,31 @@ type ProgressPayload = {
 
 function DatabaseLoader({ isLoading, tab }: { isLoading: boolean; tab: string | null }) {
   const [progress, setProgress] = useState(0);
-  const [completed, setCompleted] = useState(false);
 
   useEffect(() => {
-    async function getProgress() {
-      const unlisten = await listen<ProgressPayload>("search_progress", async ({ payload }) => {
-        if (payload.id !== tab) return;
-        if (payload.finished) {
-          setCompleted(true);
-          setProgress(0);
-          unlisten();
-        } else {
-          setProgress(payload.progress);
-        }
-      });
-    }
-    getProgress();
-  }, []);
+    let unlisten: (() => void) | undefined;
+    let cancelled = false;
+
+    listen<ProgressPayload>("search_progress", ({ payload }) => {
+      if (payload.id !== tab) return;
+      if (payload.finished) {
+        setProgress(0);
+      } else {
+        setProgress(payload.progress);
+      }
+    }).then((cleanup) => {
+      if (cancelled) {
+        cleanup();
+      } else {
+        unlisten = cleanup;
+      }
+    });
+
+    return () => {
+      cancelled = true;
+      unlisten?.();
+    };
+  }, [tab]);
 
   const isLoadingFromMemory = isLoading && progress === 0;
 

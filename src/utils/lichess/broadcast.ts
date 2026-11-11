@@ -47,6 +47,7 @@ export interface BroadcastItem {
   rounds?: BroadcastRound[];
   defaultRoundId?: string;
   group?: string;
+  avgRating?: number | null;
 }
 
 export interface BroadcastTopResponse {
@@ -117,10 +118,14 @@ export async function fetchRoundPgn(roundId: string): Promise<string> {
   return await res.text();
 }
 
-function extractHeader(pgn: string, header: string): string | undefined {
-  const regex = new RegExp(`\\[${header}\\s+"([^"]*)"\\]`, "i");
-  const match = pgn.match(regex);
-  return match ? match[1] : undefined;
+function extractHeaders(pgn: string): Record<string, string> {
+  const headers: Record<string, string> = {};
+  const regex = /\[([a-zA-Z0-9]+)\s+"([^"]*)"\]/g;
+  let match: RegExpExecArray | null;
+  while ((match = regex.exec(pgn)) !== null) {
+    headers[match[1].toLowerCase()] = match[2];
+  }
+  return headers;
 }
 
 export function parseBroadcastGames(rawPgnText: string): BroadcastGameSummary[] {
@@ -133,7 +138,8 @@ export function parseBroadcastGames(rawPgnText: string): BroadcastGameSummary[] 
     .filter((g) => g.startsWith("[Event "));
 
   return rawGames.map((gamePgn, index) => {
-    const roundTag = extractHeader(gamePgn, "Round") || "";
+    const h = extractHeaders(gamePgn);
+    const roundTag = h.round || "";
     // e.g. "7.1", "7.24" -> board number 1, 24
     let boardNumber = index + 1;
     if (roundTag.includes(".")) {
@@ -144,20 +150,20 @@ export function parseBroadcastGames(rawPgnText: string): BroadcastGameSummary[] 
       }
     }
 
-    const white = extractHeader(gamePgn, "White") || "White";
-    const black = extractHeader(gamePgn, "Black") || "Black";
-    const whiteElo = extractHeader(gamePgn, "WhiteElo");
-    const blackElo = extractHeader(gamePgn, "BlackElo");
-    const whiteTitle = extractHeader(gamePgn, "WhiteTitle");
-    const blackTitle = extractHeader(gamePgn, "BlackTitle");
-    const whiteTeam = extractHeader(gamePgn, "WhiteTeam");
-    const blackTeam = extractHeader(gamePgn, "BlackTeam");
-    const whiteFideId = extractHeader(gamePgn, "WhiteFideId");
-    const blackFideId = extractHeader(gamePgn, "BlackFideId");
-    const result = extractHeader(gamePgn, "Result") || "*";
-    const eco = extractHeader(gamePgn, "ECO");
-    const opening = extractHeader(gamePgn, "Opening");
-    const gameUrl = extractHeader(gamePgn, "GameURL");
+    const white = h.white || "White";
+    const black = h.black || "Black";
+    const whiteElo = h.whiteelo;
+    const blackElo = h.blackelo;
+    const whiteTitle = h.whitetitle;
+    const blackTitle = h.blacktitle;
+    const whiteTeam = h.whiteteam;
+    const blackTeam = h.blackteam;
+    const whiteFideId = h.whitefideid;
+    const blackFideId = h.blackfideid;
+    const result = h.result || "*";
+    const eco = h.eco;
+    const opening = h.opening;
+    const gameUrl = h.gameurl;
 
     // Generate unique ID from URL or fallback
     let id = `${index}`;
@@ -206,10 +212,12 @@ export function parseBroadcastGames(rawPgnText: string): BroadcastGameSummary[] 
         .trim();
       const tokens = cleaned.split(/\s+/).filter(Boolean);
       if (tokens.length > 0) {
-        lastMove = tokens[tokens.length - 1];
-        // If it's a move number like "1.", grab the next token if available
-        if (/^\d+\.?$/.test(lastMove) && tokens.length > 1) {
-          lastMove = tokens[tokens.length - 2] + " " + lastMove;
+        const last = tokens[tokens.length - 1];
+        // If it's a move number like "2.", the previous token is the actual last move
+        if (/^\d+\.?$/.test(last)) {
+          lastMove = tokens.length > 1 ? tokens[tokens.length - 2] : undefined;
+        } else {
+          lastMove = last;
         }
       }
     }
@@ -238,4 +246,43 @@ export function parseBroadcastGames(rawPgnText: string): BroadcastGameSummary[] 
       pgn: gamePgn,
     };
   });
+}
+
+export const roundAvgRatingCache = new Map<string, number>();
+
+export function computeRoundAverageRating(rawPgnText: string): number | null {
+  if (!rawPgnText || !rawPgnText.trim()) return null;
+  const eloRegex = /\[(?:White|Black)Elo\s+"(\d+)"\]/gi;
+  let match: RegExpExecArray | null;
+  let sum = 0;
+  let count = 0;
+  while ((match = eloRegex.exec(rawPgnText)) !== null) {
+    const elo = parseInt(match[1], 10);
+    if (!isNaN(elo) && elo > 800 && elo < 4000) {
+      sum += elo;
+      count++;
+    }
+  }
+  return count > 0 ? Math.round(sum / count) : null;
+}
+
+export async function fetchAndComputeRoundRating(roundId: string): Promise<number | null> {
+  if (roundAvgRatingCache.has(roundId)) {
+    return roundAvgRatingCache.get(roundId) ?? null;
+  }
+  try {
+    const pgn = await fetchRoundPgn(roundId);
+    const avg = computeRoundAverageRating(pgn);
+    if (avg !== null) {
+      if (roundAvgRatingCache.size >= 500) {
+        const oldest = roundAvgRatingCache.keys().next().value;
+        if (oldest) roundAvgRatingCache.delete(oldest);
+      }
+      roundAvgRatingCache.set(roundId, avg);
+    }
+    return avg;
+  } catch (err) {
+    console.warn(`Failed to fetch rating for round ${roundId}:`, err);
+    return null;
+  }
 }

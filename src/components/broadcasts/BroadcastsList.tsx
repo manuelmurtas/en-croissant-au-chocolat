@@ -6,7 +6,7 @@ import {
   Button,
   Container,
   Group,
-  Loader,
+  Select,
   SimpleGrid,
   Skeleton,
   Stack,
@@ -18,16 +18,16 @@ import {
 import {
   IconAlertCircle,
   IconBroadcast,
-  IconLiveView,
   IconRefresh,
   IconSearch,
 } from "@tabler/icons-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import useSWR from "swr";
 import {
-  type BroadcastItem,
   type BroadcastTour,
+  fetchAndComputeRoundRating,
   fetchTopBroadcasts,
+  roundAvgRatingCache,
 } from "@/utils/lichess/broadcast";
 import BroadcastCard from "./BroadcastCard";
 import classes from "./Broadcasts.module.css";
@@ -39,6 +39,8 @@ interface BroadcastsListProps {
 export default function BroadcastsList({ onSelectTour }: BroadcastsListProps) {
   const [activeTab, setActiveTab] = useState<string>("live");
   const [search, setSearch] = useState("");
+  const [sortBy, setSortBy] = useState<"rating" | "default">("rating");
+  const [ratingsMap, setRatingsMap] = useState<Record<string, number>>({});
 
   const {
     data,
@@ -75,17 +77,100 @@ export default function BroadcastsList({ onSelectTour }: BroadcastsListProps) {
     }
   }, [activeTab, liveItems, activeItems, upcomingItems, pastItems]);
 
-  const filteredItems = useMemo(() => {
-    if (!search.trim()) return currentTabItems;
-    const q = search.toLowerCase();
-    return currentTabItems.filter((item) => {
-      const name = item.tour.name.toLowerCase();
-      const group = (item.tour.group || "").toLowerCase();
-      const loc = (item.tour.info?.location || "").toLowerCase();
-      const players = (item.tour.info?.players || "").toLowerCase();
-      return name.includes(q) || group.includes(q) || loc.includes(q) || players.includes(q);
+  // Fetch average rating for each tournament's current/live round
+  useEffect(() => {
+    let cancelled = false;
+
+    const itemsToProcess = currentTabItems
+      .map((item) => {
+        const ongoingRound = item.round?.ongoing
+          ? item.round
+          : item.rounds?.find((r) => r.ongoing);
+        const roundId = ongoingRound?.id || item.round?.id || item.defaultRoundId;
+        return { tourId: item.tour.id, roundId };
+      })
+      .filter((x): x is { tourId: string; roundId: string } => !!x.roundId);
+
+    // Populate immediately from cache if available
+    const cached: Record<string, number> = {};
+    for (const { tourId, roundId } of itemsToProcess) {
+      if (roundAvgRatingCache.has(roundId)) {
+        cached[tourId] = roundAvgRatingCache.get(roundId)!;
+      }
+    }
+    if (Object.keys(cached).length > 0) {
+      setRatingsMap((prev) => {
+        let changed = false;
+        for (const [k, v] of Object.entries(cached)) {
+          if (prev[k] !== v) {
+            changed = true;
+            break;
+          }
+        }
+        return changed ? { ...prev, ...cached } : prev;
+      });
+    }
+
+    const needed = itemsToProcess.filter(({ roundId }) => !roundAvgRatingCache.has(roundId));
+    if (needed.length === 0) return;
+
+    Promise.all(
+      needed.map(async ({ tourId, roundId }) => {
+        const rating = await fetchAndComputeRoundRating(roundId);
+        return { tourId, rating };
+      }),
+    ).then((results) => {
+      if (cancelled) return;
+      setRatingsMap((prev) => {
+        let changed = false;
+        const next = { ...prev };
+        for (const { tourId, rating } of results) {
+          if (rating !== null && prev[tourId] !== rating) {
+            next[tourId] = rating;
+            changed = true;
+          }
+        }
+        return changed ? next : prev;
+      });
     });
-  }, [currentTabItems, search]);
+
+    return () => {
+      cancelled = true;
+    };
+  }, [currentTabItems]);
+
+  const sortedAndFilteredItems = useMemo(() => {
+    let items = currentTabItems;
+    if (search.trim()) {
+      const q = search.toLowerCase();
+      items = items.filter((item) => {
+        const name = item.tour.name.toLowerCase();
+        const group = (item.tour.group || "").toLowerCase();
+        const loc = (item.tour.info?.location || "").toLowerCase();
+        const players = (item.tour.info?.players || "").toLowerCase();
+        return name.includes(q) || group.includes(q) || loc.includes(q) || players.includes(q);
+      });
+    }
+
+    // Always sort by Average Rating descending when on Live tab or when sortBy is 'rating'
+    if (sortBy === "rating" || activeTab === "live") {
+      return [...items].sort((a, b) => {
+        const ratingA = ratingsMap[a.tour.id] || 0;
+        const ratingB = ratingsMap[b.tour.id] || 0;
+        if (ratingA !== ratingB) {
+          return ratingB - ratingA;
+        }
+        const tierA = a.tour.tier || 0;
+        const tierB = b.tour.tier || 0;
+        if (tierA !== tierB) {
+          return tierB - tierA;
+        }
+        return a.tour.name.localeCompare(b.tour.name);
+      });
+    }
+
+    return items;
+  }, [currentTabItems, search, sortBy, activeTab, ratingsMap]);
 
   return (
     <Container size="xl" py="lg" style={{ height: "100%", overflowY: "auto" }}>
@@ -103,14 +188,24 @@ export default function BroadcastsList({ onSelectTour }: BroadcastsListProps) {
             )}
           </Group>
 
-          <Group gap="xs">
+          <Group gap="xs" wrap="wrap">
             <TextInput
               placeholder="Search tournaments or players..."
               leftSection={<IconSearch size={16} />}
               value={search}
               onChange={(e) => setSearch(e.currentTarget.value)}
               size="sm"
-              w={{ base: "100%", sm: 260 }}
+              w={{ base: "100%", sm: 220 }}
+            />
+            <Select
+              size="sm"
+              w={{ base: "100%", sm: 210 }}
+              value={sortBy}
+              onChange={(val) => setSortBy((val as "rating" | "default") || "rating")}
+              data={[
+                { label: "⭐ Rating (High to Low)", value: "rating" },
+                { label: "Default Order", value: "default" },
+              ]}
             />
             <ActionIcon
               variant="default"
@@ -184,9 +279,9 @@ export default function BroadcastsList({ onSelectTour }: BroadcastsListProps) {
         )}
 
         {/* Tournament Cards Grid */}
-        {!isLoading && filteredItems.length > 0 && (
+        {!isLoading && sortedAndFilteredItems.length > 0 && (
           <SimpleGrid cols={{ base: 1, sm: 2, md: 3, lg: 4 }} spacing="md">
-            {filteredItems.map((item) => {
+            {sortedAndFilteredItems.map((item) => {
               const isOngoing =
                 item.round?.ongoing || (item.rounds && item.rounds.some((r) => r.ongoing));
               return (
@@ -195,6 +290,7 @@ export default function BroadcastsList({ onSelectTour }: BroadcastsListProps) {
                   tour={item.tour}
                   round={item.round}
                   isLive={isOngoing}
+                  avgRating={ratingsMap[item.tour.id] || null}
                   onSelect={onSelectTour}
                 />
               );
@@ -203,7 +299,7 @@ export default function BroadcastsList({ onSelectTour }: BroadcastsListProps) {
         )}
 
         {/* Empty state */}
-        {!isLoading && filteredItems.length === 0 && !error && (
+        {!isLoading && sortedAndFilteredItems.length === 0 && !error && (
           <Stack align="center" justify="center" py="xl" gap="sm">
             <IconBroadcast size={48} opacity={0.3} />
             <Text c="dimmed">No broadcasts found matching your criteria.</Text>

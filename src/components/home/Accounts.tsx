@@ -11,7 +11,7 @@ import {
 import { IconPlus } from "@tabler/icons-react";
 import { listen } from "@tauri-apps/api/event";
 import { useAtom, useAtomValue } from "jotai";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { DatabaseInfo } from "@/bindings";
 import { commands } from "@/bindings";
@@ -27,7 +27,6 @@ import LichessLogo from "./LichessLogo";
 function Accounts() {
   const { t } = useTranslation();
   const [sessions, setSessions] = useAtom(sessionsAtom);
-  const isListening = useRef(false);
   const [databases, setDatabases] = useState<DatabaseInfo[]>([]);
   useEffect(() => {
     getDatabases().then((dbs) => setDatabases(dbs));
@@ -48,7 +47,7 @@ function Accounts() {
     });
   }
 
-  function addLichessSession(alias: string, session: LichessSession) {
+  const addLichessSession = useCallback((alias: string, session: LichessSession) => {
     setSessions((sessions) => {
       const newSessions = sessions.filter((s) => s.lichess?.username !== session.username);
       return [
@@ -60,7 +59,7 @@ function Accounts() {
         },
       ];
     });
-  }
+  }, [setSessions]);
 
   async function addChessCom(player: string, username: string) {
     const p = player !== "" ? player : username;
@@ -78,7 +77,7 @@ function Accounts() {
     addLichessSession(p, { username, account });
   }
 
-  async function onLichessAuthentication(token: string) {
+  const onLichessAuthentication = useCallback(async (token: string) => {
     const player = sessionStorage.getItem("lichess_player_alias") || "";
     sessionStorage.removeItem("lichess_player_alias");
     const account = await getLichessAccount({ token });
@@ -86,7 +85,7 @@ function Accounts() {
     const username = account.username;
     const p = player !== "" ? player : username;
     addLichessSession(p, { accessToken: token, username: username, account });
-  }
+  }, [addLichessSession]);
 
   async function addLichess(player: string, username: string, withLogin: boolean) {
     if (withLogin) {
@@ -97,17 +96,25 @@ function Accounts() {
   }
 
   useEffect(() => {
-    async function listen_for_code() {
-      if (isListening.current) return;
-      isListening.current = true;
-      await listen<string>("access_token", async (event) => {
-        const token = event.payload;
-        await onLichessAuthentication(token);
-      });
-    }
+    let unlisten: (() => void) | undefined;
+    let cancelled = false;
 
-    listen_for_code();
-  }, [setSessions]);
+    listen<string>("access_token", async (event) => {
+      const token = event.payload;
+      await onLichessAuthentication(token);
+    }).then((cleanup) => {
+      if (cancelled) {
+        cleanup();
+      } else {
+        unlisten = cleanup;
+      }
+    });
+
+    return () => {
+      cancelled = true;
+      unlisten?.();
+    };
+  }, [onLichessAuthentication]);
 
   return (
     <>

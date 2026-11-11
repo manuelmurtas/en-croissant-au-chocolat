@@ -24,6 +24,7 @@ interface BroadcastCardProps {
   tour: BroadcastTour;
   round?: BroadcastRound;
   isLive?: boolean;
+  avgRating?: number | null;
   onSelect: (tour: BroadcastTour) => void;
 }
 
@@ -31,6 +32,7 @@ export default function BroadcastCard({
   tour,
   round,
   isLive,
+  avgRating,
   onSelect,
 }: BroadcastCardProps) {
   const datesText = tour.dates
@@ -71,23 +73,44 @@ export default function BroadcastCard({
       <Stack justify="space-between" mt="sm" style={{ flex: 1 }} gap="xs">
         <Stack gap={4}>
           <Group justify="space-between" align="flex-start" wrap="nowrap">
-            <Title order={5} lineClamp={2} title={tour.name}>
+            <Title order={5} lineClamp={2} title={tour.name} style={{ flex: 1 }}>
               {tour.name}
             </Title>
-            {isLive ? (
-              <Badge color="red" variant="filled" className={classes.liveBadge}>
-                <span className={classes.pulseDot} />
-                LIVE
-              </Badge>
-            ) : round?.finished ? (
-              <Badge color="gray" variant="light">
-                Finished
-              </Badge>
-            ) : (
-              <Badge color="blue" variant="light">
-                Upcoming
-              </Badge>
-            )}
+            <Group gap={4} wrap="nowrap" style={{ flexShrink: 0 }}>
+              {avgRating ? (
+                <Badge
+                  size="sm"
+                  variant="filled"
+                  color={
+                    avgRating >= 2600
+                      ? "grape"
+                      : avgRating >= 2400
+                        ? "blue"
+                        : avgRating >= 2100
+                          ? "teal"
+                          : "dark"
+                  }
+                  title={`Tournament Average Rating: ${avgRating}`}
+                  style={{ fontWeight: 600 }}
+                >
+                  Avg {avgRating}
+                </Badge>
+              ) : null}
+              {isLive ? (
+                <Badge color="red" variant="filled" className={classes.liveBadge}>
+                  <span className={classes.pulseDot} />
+                  LIVE
+                </Badge>
+              ) : round?.finished ? (
+                <Badge color="gray" variant="light">
+                  Finished
+                </Badge>
+              ) : (
+                <Badge color="blue" variant="light">
+                  Upcoming
+                </Badge>
+              )}
+            </Group>
           </Group>
 
           {tour.group && (

@@ -622,8 +622,9 @@ function isThreeFoldRepetition(state: TreeState, fen: string): boolean {
 
     let node = state.root;
     for (const i of state.position) {
+        if (!node || !node.children || i >= node.children.length) break;
         node = node.children[i];
-        if (getBoardState(node.fen) === targetState) {
+        if (node && getBoardState(node.fen) === targetState) {
             matchCount++;
             if (matchCount >= 2) return true;
         }

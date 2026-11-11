@@ -128,7 +128,7 @@ export function getMoveText(
 
 export function getLastMainlinePosition(root: TreeNode): number[] {
     const position = [];
-    for (let node = root; node.children.length > 0; node = node.children[0]) {
+    for (let node = root; node && node.children && node.children.length > 0; node = node.children[0]) {
         if (node.move) {
             position.push(0);
         }
@@ -150,21 +150,25 @@ export function getVariationLine(
     position: number[],
     includeLastMove = false,
 ): string[] {
-    const moves = [];
-    let node = root;
+    if (!root) return [];
+    const moves: string[] = [];
+    let node: TreeNode | undefined = root;
     const [chess] = positionFromFen(root.fen);
     if (!chess) {
         return [];
     }
     for (const pos of position) {
+        if (!node || !node.children || pos >= node.children.length) {
+            break;
+        }
         node = node.children[pos];
-        if (node.move) {
+        if (node?.move) {
             moves.push(uciNormalize(chess, node.move));
             chess.play(node.move);
         }
     }
-    if (includeLastMove && node.children.length > 0) {
-        moves.push(uciNormalize(chess, node.children[0].move!));
+    if (includeLastMove && node && node.children && node.children.length > 0 && node.children[0]?.move) {
+        moves.push(uciNormalize(chess, node.children[0].move));
     }
     return moves;
 }
@@ -539,22 +543,30 @@ type ColorMap<T> = {
 };
 
 export function getGameStats(root: TreeNode) {
-    const whiteAnnotations = {
+    const whiteAnnotations: Record<string, number> = {
         "??": 0,
         "?": 0,
         "?!": 0,
         "!!": 0,
         "!": 0,
         "!?": 0,
+        "📖": 0,
+        "★": 0,
+        "✓": 0,
+        "⊗": 0,
     };
 
-    const blackAnnotations = {
+    const blackAnnotations: Record<string, number> = {
         "??": 0,
         "?": 0,
         "?!": 0,
         "!!": 0,
         "!": 0,
         "!?": 0,
+        "📖": 0,
+        "★": 0,
+        "✓": 0,
+        "⊗": 0,
     };
 
     if (root.children.length === 0) {
@@ -577,9 +589,10 @@ export function getGameStats(root: TreeNode) {
         white: [],
         black: [],
     };
-    let node = root;
-    while (node.children.length > 0) {
+    let node: TreeNode | undefined = root;
+    while (node && node.children && node.children.length > 0) {
         node = node.children[0];
+        if (!node) break;
         for (const annotation of node.annotations) {
             if (isBasicAnnotation(annotation)) {
                 if (node.halfMoves % 2 === 1) {

@@ -1,5 +1,4 @@
 import {
-  ActionIcon,
   Alert,
   Badge,
   Box,
@@ -13,9 +12,8 @@ import {
   Slider,
   Stack,
   Text,
-  Tooltip,
 } from "@mantine/core";
-import { IconAlertCircle, IconCpu, IconExternalLink, IconSettings } from "@tabler/icons-react";
+import { IconAlertCircle, IconCpu, IconExternalLink } from "@tabler/icons-react";
 import { useNavigate } from "@tanstack/react-router";
 import { useAtom } from "jotai";
 import React, { useMemo } from "react";
@@ -60,7 +58,7 @@ export default function BroadcastEngineSettingsModal({
 }: BroadcastEngineSettingsModalProps) {
   const { t } = useTranslation();
   const navigate = useNavigate();
-  const [engines, setEngines] = useAtom(enginesAtom);
+  const [, setEngines] = useAtom(enginesAtom);
 
   const threads = useMemo(() => {
     return settings.settings?.find((o) => o.name === "Threads");
@@ -83,6 +81,36 @@ export default function BroadcastEngineSettingsModal({
         : [...existing, { name, value }];
       return { ...prev, settings: newSettings };
     });
+
+    if (engine) {
+      setEngines(async (prevEngines) => {
+        const list = await prevEngines;
+        return list.map((e) => {
+          if (e.id === engine.id) {
+            const existing = e.settings || [];
+            const exists = existing.some((o) => o.name === name);
+            const newSettings = exists
+              ? existing.map((o) => (o.name === name ? { ...o, value } : o))
+              : [...existing, { name, value }];
+            return {
+              ...e,
+              settings: newSettings,
+            };
+          }
+          return e;
+        });
+      });
+    }
+  };
+
+  const updateGoMode = (go: GoMode) => {
+    setSettings((prev) => ({ ...prev, go }));
+    if (engine) {
+      setEngines(async (prevEngines) => {
+        const list = await prevEngines;
+        return list.map((e) => (e.id === engine.id ? { ...e, go } : e));
+      });
+    }
   };
 
   const saveAsGlobalDefault = () => {
@@ -229,7 +257,7 @@ export default function BroadcastEngineSettingsModal({
               </Text>
               <GoModeInput
                 goMode={settings.go}
-                setGoMode={(go) => setSettings((prev) => ({ ...prev, go }))}
+                setGoMode={updateGoMode}
               />
             </Stack>
 

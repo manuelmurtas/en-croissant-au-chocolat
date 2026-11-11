@@ -75,46 +75,39 @@ export function Chessground({ ref, ...props }: ChessgroundProps) {
   );
 
   useEffect(() => {
-    if (boardRef?.current == null) return;
-    if (api) {
-      api.set({
-        ...props,
-        events: {
-          ...props.events,
-          change: () => {
-            if (props.setBoardFen && api) {
-              props.setBoardFen(api.getFen());
-            }
-          },
+    if (boardRef?.current == null || api != null) return;
+
+    const chessgroundApi = NativeChessground(boardRef.current, {
+      ...props,
+      addDimensionsCssVarsTo: boardRef.current,
+      events: {
+        ...props.events,
+        change: () => {
+          if (props.setBoardFen && chessgroundApi) {
+            props.setBoardFen(chessgroundApi.getFen());
+          }
         },
-      });
-    } else {
-      const chessgroundApi = NativeChessground(boardRef.current, {
-        ...props,
-        addDimensionsCssVarsTo: boardRef.current,
-        events: {
-          ...props.events,
-          change: () => {
-            if (props.setBoardFen && chessgroundApi) {
-              props.setBoardFen(chessgroundApi.getFen());
-            }
-          },
-        },
-        draggable: {
-          ...props.draggable,
-          enabled: moveMethod !== "select",
-        },
-        selectable: {
-          ...props.selectable,
-          enabled: moveMethod !== "drag",
-        },
-      });
-      setApi(chessgroundApi);
-    }
-  }, [api, props, boardRef]);
+      },
+      draggable: {
+        ...props.draggable,
+        enabled: moveMethod !== "select",
+      },
+      selectable: {
+        ...props.selectable,
+        enabled: moveMethod !== "drag",
+      },
+    });
+    setApi(chessgroundApi);
+
+    return () => {
+      chessgroundApi.destroy();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [boardRef]);
 
   useEffect(() => {
-    api?.set({
+    if (!api) return;
+    api.set({
       ...props,
       events: {
         ...props.events,

@@ -40,20 +40,19 @@ function EvalListener() {
     useShallow((s) => getVariationLine(s.root, s.position)),
   );
 
-  const [pos] = positionFromFen(fen);
-  if (pos) {
+  const { isGameOver, finalFen } = useMemo(() => {
+    const [pos] = positionFromFen(fen);
+    if (!pos) return { isGameOver: false, finalFen: null };
     for (const uci of moves) {
       const move = parseUci(uci);
-      if (!move) {
-        console.log("Invalid move", uci);
-        break;
-      }
+      if (!move) break;
       pos.play(move);
     }
-  }
-
-  const isGameOver = pos?.isEnd() ?? false;
-  const finalFen = useMemo(() => (pos ? makeFen(pos.toSetup()) : null), [pos]);
+    return {
+      isGameOver: pos.isEnd(),
+      finalFen: makeFen(pos.toSetup()),
+    };
+  }, [fen, moves]);
 
   const { searchingFen, searchingMoves } = useMemo(
     () =>
@@ -123,6 +122,7 @@ function EngineListener({
 
   const [, setProgress] = useAtom(engineProgressFamily({ engine: engine.id, tab: tabId }));
   const [, setEngineVariation] = useAtom(engineMovesFamily({ engine: engine.id, tab: tabId }));
+  const searchingMovesKey = searchingMoves.join(",");
   const [settings] = useAtom(
     tabEngineSettingsFamily({
       engineId: engine.id,
@@ -182,7 +182,9 @@ function EngineListener({
     settings.enabled,
     isGameOver,
     searchingFen,
-    JSON.stringify(searchingMoves),
+    searchingMovesKey,
+    searchingMoves,
+    setProgress,
     engine.id,
     setEngineVariation,
     firstEngineWithLines,
@@ -203,7 +205,7 @@ function EngineListener({
         .with("chessdb", () => chessdbGetBestMoves)
         .with("lichess", () => lichessGetBestMoves)
         .exhaustive(),
-    [engine.type, engine],
+    [engine],
   );
 
   useThrottledEffect(
