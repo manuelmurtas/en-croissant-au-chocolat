@@ -50,6 +50,7 @@ import EvalListener from "@/components/boards/EvalListener";
 import { TreeStateContext, TreeStateProvider } from "@/components/common/TreeStateContext";
 import FideInfo from "@/components/databases/FideInfo";
 import ScoreBubble from "@/components/panels/analysis/ScoreBubble";
+import TablebaseInfo from "@/components/panels/analysis/TablebaseInfo";
 import { useProgress } from "@/hooks/useProgress";
 import {
   activeTabAtom,
@@ -65,7 +66,7 @@ import {
 import { keyMapAtom } from "@/state/keybinds";
 import { type Annotation, isBasicAnnotation } from "@/utils/annotation";
 import { getMainLine, getVariationLine, parsePGN } from "@/utils/chess";
-import { positionFromFen, swapMove } from "@/utils/chessops";
+import { getPiecesCount, hasCaptures, isOp1, positionFromFen, swapMove } from "@/utils/chessops";
 import { type LocalEngine, stopEngine } from "@/utils/engines";
 import { formatNodes } from "@/utils/format";
 import { classifyMove, getReviewColor } from "@/utils/gameReview";
@@ -403,6 +404,12 @@ function LiveGameContent({
   const [pos] = positionFromFen(currentNode.fen);
   const turnColor: Color = pos?.turn === "black" ? "black" : "white";
   const isOngoing = game.result === "*";
+
+  const isTablebasePosition = useMemo(() => {
+    if (!pos) return false;
+    const pieces = getPiecesCount(pos);
+    return pieces <= 7 || (pieces === 8 && (hasCaptures(pos) || isOp1(pos)));
+  }, [pos]);
 
   // Clocks are rendered isolated in PlayerBar via LiveClockBadge to avoid re-rendering LiveGameContent
 
@@ -1279,6 +1286,13 @@ function LiveGameContent({
               color="teal"
               striped
             />
+          )}
+
+          {/* Tablebase Widget for Endgames (<= 7 pieces) */}
+          {isTablebasePosition && pos && (
+            <Box px="xs" py={4} style={{ borderBottom: "1px solid var(--mantine-color-default-border)" }}>
+              <TablebaseInfo fen={currentNode.fen} turn={turnColor} defaultOpened />
+            </Box>
           )}
 
           {/* In-Place Local Engine Panel (Full Analysis) */}
