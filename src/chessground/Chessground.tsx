@@ -89,7 +89,6 @@ export function Chessground({ ref, ...props }: ChessgroundProps) {
   );
 
   useEffect(() => {
-  useEffect(() => {
     if (!api || !boardRef.current) return;
     return syncBoardBounds(boardRef.current, api);
   }, [api]);

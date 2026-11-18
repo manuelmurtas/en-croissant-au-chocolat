@@ -187,12 +187,12 @@ export function getVariationLine(
         return [];
     }
     for (const pos of position) {
-        const child = node?.children?.[pos];
+        const child: TreeNode | undefined = node?.children?.[pos];
         if (!child) break;
         node = child;
-        if (node.move) {
-            moves.push(uciNormalize(chess, node.move));
-            chess.play(node.move);
+        if (child.move) {
+            moves.push(uciNormalize(chess, child.move));
+            chess.play(child.move);
         }
     }
     if (includeLastMove && node && node.children && node.children.length > 0 && node.children[0]?.move) {

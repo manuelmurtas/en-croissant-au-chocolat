@@ -40,9 +40,9 @@ function EvalListener() {
     useShallow((s) => getVariationLine(s.root, s.position)),
   );
 
-  const { isGameOver, finalFen } = useMemo(() => {
+  const { isGameOver, isCheck, finalFen } = useMemo(() => {
     const [pos] = positionFromFen(fen);
-    if (!pos) return { isGameOver: false, finalFen: null };
+    if (!pos) return { isGameOver: false, isCheck: false, finalFen: null };
     for (const uci of moves) {
       const move = parseUci(uci);
       if (!move) break;

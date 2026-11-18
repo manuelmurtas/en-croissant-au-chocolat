@@ -28,7 +28,6 @@ import LichessLogo from "./LichessLogo";
 function Accounts() {
   const { t } = useTranslation();
   const [sessions, setSessions] = useAtom(sessionsAtom);
-  const isListening = useRef(false);
   const { data: databases = [], mutate } = useSWR("databases", () => getDatabases());
   const setDatabases: React.Dispatch<React.SetStateAction<DatabaseInfo[]>> = (update) =>
     mutate((current) => (typeof update === "function" ? update(current ?? []) : update), {
